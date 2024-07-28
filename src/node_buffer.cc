@@ -58,7 +58,6 @@ using v8::ArrayBufferView;
 using v8::BackingStore;
 using v8::Context;
 using v8::EscapableHandleScope;
-using v8::FastApiTypedArray;
 using v8::FunctionCallbackInfo;
 using v8::Global;
 using v8::HandleScope;
@@ -845,24 +844,6 @@ void Compare(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(val);
 }
 
-int32_t FastCompare(v8::Local<v8::Value>,
-                    const FastApiTypedArray<uint8_t>& a,
-                    const FastApiTypedArray<uint8_t>& b) {
-  uint8_t* data_a;
-  uint8_t* data_b;
-  CHECK(a.getStorageIfAligned(&data_a));
-  CHECK(b.getStorageIfAligned(&data_b));
-
-  size_t cmp_length = std::min(a.length(), b.length());
-
-  return normalizeCompareVal(
-      cmp_length > 0 ? memcmp(data_a, data_b, cmp_length) : 0,
-      a.length(),
-      b.length());
-}
-
-static v8::CFunction fast_compare(v8::CFunction::Make(FastCompare));
-
 // Computes the offset for starting an indexOf or lastIndexOf search.
 // Returns either a valid offset in [0...<length - 1>], ie inside the Buffer,
 // or -1 to signal that there is no possible match.
@@ -1127,20 +1108,6 @@ void SlowIndexOfNumber(const FunctionCallbackInfo<Value>& args) {
   args.GetReturnValue().Set(IndexOfNumber(
       buffer.data(), buffer.length(), needle, offset_i64, is_forward));
 }
-
-int32_t FastIndexOfNumber(v8::Local<v8::Value>,
-                          const FastApiTypedArray<uint8_t>& buffer,
-                          uint32_t needle,
-                          int64_t offset_i64,
-                          bool is_forward) {
-  uint8_t* buffer_data;
-  CHECK(buffer.getStorageIfAligned(&buffer_data));
-  return IndexOfNumber(
-      buffer_data, buffer.length(), needle, offset_i64, is_forward);
-}
-
-static v8::CFunction fast_index_of_number(
-    v8::CFunction::Make(FastIndexOfNumber));
 
 void Swap16(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
@@ -1448,15 +1415,11 @@ void Initialize(Local<Object> target,
                             SlowByteLengthUtf8,
                             &fast_byte_length_utf8);
   SetMethod(context, target, "copy", Copy);
-  SetFastMethodNoSideEffect(context, target, "compare", Compare, &fast_compare);
+  SetMethod(context, target, "compare", Compare);
   SetMethodNoSideEffect(context, target, "compareOffset", CompareOffset);
   SetMethod(context, target, "fill", Fill);
   SetMethodNoSideEffect(context, target, "indexOfBuffer", IndexOfBuffer);
-  SetFastMethodNoSideEffect(context,
-                            target,
-                            "indexOfNumber",
-                            SlowIndexOfNumber,
-                            &fast_index_of_number);
+  SetMethod(context, target, "indexOfNumber", SlowIndexOfNumber);
   SetMethodNoSideEffect(context, target, "indexOfString", IndexOfString);
 
   SetMethod(context, target, "detachArrayBuffer", DetachArrayBuffer);
@@ -1512,14 +1475,10 @@ void RegisterExternalReferences(ExternalReferenceRegistry* registry) {
   registry->Register(FastByteLengthUtf8);
   registry->Register(Copy);
   registry->Register(Compare);
-  registry->Register(FastCompare);
-  registry->Register(fast_compare.GetTypeInfo());
   registry->Register(CompareOffset);
   registry->Register(Fill);
   registry->Register(IndexOfBuffer);
   registry->Register(SlowIndexOfNumber);
-  registry->Register(FastIndexOfNumber);
-  registry->Register(fast_index_of_number.GetTypeInfo());
   registry->Register(IndexOfString);
 
   registry->Register(Swap16);
